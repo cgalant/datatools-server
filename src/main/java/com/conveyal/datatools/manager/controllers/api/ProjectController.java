@@ -707,6 +707,15 @@ public class ProjectController {
     }
 
     public static void register (String apiPrefix) {
+	options(apiPrefix + "secure/project", (q, p) -> { return "";} );
+	options(apiPrefix + "public/project", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/project/:id", (q, p) -> { return "";} );
+	options(apiPrefix + "public/project/:id", (q, p) -> { return "";} );
+	options(apiPrefix + "public/project/:id/download", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/project/:id/thirdPartySync/:type", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/project/:id/fetch", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/project/:id/deployPublic", (q, p) -> { return "";} );
+	
         get(apiPrefix + "secure/project/:id", ProjectController::getProject, json::write);
         get(apiPrefix + "secure/project", ProjectController::getAllProjects, json::write);
         post(apiPrefix + "secure/project", ProjectController::createProject, json::write);

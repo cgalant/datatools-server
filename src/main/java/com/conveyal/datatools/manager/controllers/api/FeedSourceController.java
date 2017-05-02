@@ -237,7 +237,10 @@ public class FeedSourceController {
         FeedSource source = requestFeedSourceById(req, "manage");
 
         try {
+	    Project project = Project.get(source.projectId);
             source.delete();
+	    if (project.getProjectFeedSources() == null || project.getProjectFeedSources().isEmpty())
+		project.delete();
             return source;
         } catch (Exception e) {
             e.printStackTrace();
@@ -332,6 +335,13 @@ public class FeedSourceController {
         return s;
     }
     public static void register (String apiPrefix) {
+	options(apiPrefix + "secure/feedsource", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedsource", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/feedsource/:id", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedsource/:id", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/feedsource/:id/updateExternal", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/feedsource/:id/fetch", (q, p) -> { return "";} );
+	
         get(apiPrefix + "secure/feedsource/:id", FeedSourceController::getFeedSource, json::write);
         get(apiPrefix + "secure/feedsource", FeedSourceController::getAllFeedSources, json::write);
         post(apiPrefix + "secure/feedsource", FeedSourceController::createFeedSource, json::write);

@@ -252,6 +252,12 @@ public class UserController {
     }
 
     public static void register (String apiPrefix) {
+	options(apiPrefix + "secure/user", (q, p) -> { return "";});
+	options(apiPrefix + "public/user", (q, p) -> { return "";});
+	options(apiPrefix + "secure/usercount", (q, p) -> { return "";});
+	options(apiPrefix + "secure/user/:id", (q, p) -> { return "";});
+	options(apiPrefix + "secure/user/:id/recentactivity", (q, p) -> { return "";});
+
         get(apiPrefix + "secure/user/:id", UserController::getUser, json::write);
         get(apiPrefix + "secure/user/:id/recentactivity", UserController::getRecentActivity, json::write);
         get(apiPrefix + "secure/user", UserController::getAllUsers, json::write);

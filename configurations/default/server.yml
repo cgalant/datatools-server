@@ -1,32 +1,45 @@
 application:
-  assets_bucket: datatools-staging # dist directory
-  public_url: http://localhost:9966
-  notifications_enabled: false
-  port: 4000
+  notifications_enabled: true or false
+  assets_bucket: aasetBucketName
+  public_url: website url
+  port: api port number
+  cors:
+    enabled: true or false
+    origins: CORS origine
+    headers: origin, content-type, accept
+    methos: GET, PUT, POST
   data:
-    mapdb: /tmp
-    gtfs: /tmp
-    editor_mapdb: /tmp
-    regions: /tmp
-    use_s3_storage: false
-    s3_region: us-east-1
-    aws_role: arn:aws:iam::${AWS_ACCOUNT_NUMBER}:role/${AWS_ROLE_NAME}
-    gtfs_s3_bucket: bucket-name
+    aws_role: arn:aws:iam::8888888888:role/XXXXXXXXX
+    mapdb: /root/data/mapdb
+    gtfs: /root/data/gtfs
+    editor_mapdb: /root/data/editor
+    regions: /root/data/geojson
+    gtfs_s3_bucket: gtfsBucketName
+    s3_region: eu-west-1
+    s3_credentials_file: Credentials file path
+    use_s3_storage: true or false
 modules:
   enterprise:
     enabled: false
   editor:
     enabled: true
+  alerts:
+    enabled: false
+    use_extension: xyz
+  sign_config:
+    enabled: false
   user_admin:
     enabled: true
   validator:
     enabled: true
+  deployment:
+    enabled: false
   gtfsapi:
     enabled: true
     load_on_fetch: false
     load_on_startup: false
     use_extension: xyz
-#    update_frequency: 3600 # in seconds
+    update_frequency: 3600 # in seconds
 extensions:
   transitland:
     enabled: true
@@ -35,3 +48,4 @@ extensions:
     enabled: true
     api: http://api.transitfeeds.com/v1/getFeeds
     key: your-api-key
+

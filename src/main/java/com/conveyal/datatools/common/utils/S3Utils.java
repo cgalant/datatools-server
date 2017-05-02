@@ -29,7 +29,10 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.Date;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Set;
 
 import static spark.Spark.halt;
@@ -38,6 +41,8 @@ import static spark.Spark.halt;
  * Created by landon on 8/2/16.
  */
 public class S3Utils {
+    
+    private static Map<String, Credentials> creds = new HashMap<String, Credentials>();
 
     public static String uploadBranding(Request req, String id) throws IOException, ServletException {
         String url;
@@ -119,6 +124,16 @@ public class S3Utils {
                 .withRoleSessionName("feed-access");
         AssumeRoleResult assumeResult =
                 stsClient.assumeRole(assumeRequest);
-        return assumeResult.getCredentials();
+	Credentials cred = assumeResult.getCredentials();
+	creds.put(cred.getSessionToken(), cred);
+	return cred;
+    }
+
+    public static Credentials getS3Credentials(String sessionToken) {
+	Credentials cred = creds.get(sessionToken);
+	for (String st : creds.keySet())
+	    if (creds.get(st).getExpiration().before(new Date()))
+		creds.remove(st);
+	return cred;
     }
 }

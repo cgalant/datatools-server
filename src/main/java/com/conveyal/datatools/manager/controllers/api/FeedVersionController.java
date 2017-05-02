@@ -1,7 +1,14 @@
 package com.conveyal.datatools.manager.controllers.api;
 
+import com.amazonaws.auth.AWSStaticCredentialsProvider;
+import com.amazonaws.auth.BasicSessionCredentials;
 import com.amazonaws.auth.policy.Statement;
 import com.amazonaws.auth.policy.actions.S3Actions;
+import com.amazonaws.services.s3.AmazonS3;
+import com.amazonaws.services.s3.AmazonS3ClientBuilder;
+import com.amazonaws.services.s3.model.S3Object;
+import com.amazonaws.services.s3.model.S3ObjectSummary;
+import com.amazonaws.services.securitytoken.model.Credentials;
 import com.conveyal.datatools.manager.DataManager;
 import com.conveyal.datatools.manager.auth.Auth0UserProfile;
 import com.conveyal.datatools.manager.jobs.BuildTransportNetworkJob;
@@ -9,6 +16,7 @@ import com.conveyal.datatools.manager.jobs.CreateFeedVersionFromSnapshotJob;
 import com.conveyal.datatools.manager.jobs.ProcessSingleFeedJob;
 import com.conveyal.datatools.manager.jobs.ReadTransportNetworkJob;
 import com.conveyal.datatools.manager.models.FeedDownloadToken;
+import com.conveyal.datatools.manager.models.FeedDownloadS3Token;
 import com.conveyal.datatools.manager.models.FeedSource;
 import com.conveyal.datatools.manager.models.FeedVersion;
 import com.conveyal.datatools.manager.models.JsonViews;
@@ -363,7 +371,11 @@ public class FeedVersionController  {
 
         // if storing feeds on s3, return temporary s3 credentials for that zip file
         if (DataManager.useS3) {
-            return getS3Credentials(DataManager.awsRole, DataManager.feedBucket, FeedStore.s3Prefix + version.id, Statement.Effect.Allow, S3Actions.GetObject, 900);
+	    Credentials cred = getS3Credentials(DataManager.awsRole, DataManager.feedBucket, FeedStore.s3Prefix + version.id, Statement.Effect.Allow, S3Actions.GetObject, 900);
+	    String sessionToken = cred.getSessionToken();
+	    sessionToken += "..."+version.getGtfsFile().getName();
+	    sessionToken = Base64.getUrlEncoder().encodeToString(sessionToken.getBytes());
+	    return new FeedDownloadS3Token(sessionToken);
         } else {
             // when feeds are stored locally, single-use download token will still be used
             FeedDownloadToken token = new FeedDownloadToken(version);
@@ -391,20 +403,55 @@ public class FeedVersionController  {
     }
 
     private static Object downloadFeedVersionWithToken (Request req, Response res) {
-        FeedDownloadToken token = FeedDownloadToken.get(req.params("token"));
-
-        if(token == null || !token.isValid()) {
-            halt(400, "Feed download token not valid");
+	String tk = req.params("token");
+        
+	FeedDownloadToken token = FeedDownloadToken.get(tk);
+        
+	String sessionToken = new String(Base64.getUrlDecoder().decode(tk));
+        String fileName = sessionToken.substring(sessionToken.lastIndexOf("...")+3);
+        sessionToken = sessionToken.substring(0, sessionToken.lastIndexOf("..."));
+	Credentials cred = getS3Credentials(sessionToken);
+        
+	if (token != null) {
+	    FeedVersion version = token.getFeedVersion();
+	    token.delete();
+	    return downloadFile(version.getGtfsFile(), version.id, res);
+	} else if (cred != null) {
+	    LOG.info("Getting object from the bucket");
+	    String accessKeyId = cred.getAccessKeyId();
+	    String secretAccessKey = cred.getSecretAccessKey();
+	    BasicSessionCredentials sessionCredentials = new BasicSessionCredentials(accessKeyId, secretAccessKey, sessionToken);
+	    AmazonS3 s3 = AmazonS3ClientBuilder.standard().withCredentials(new AWSStaticCredentialsProvider(sessionCredentials)).build();
+	    String key;
+	    for (S3ObjectSummary o : s3.listObjects(DataManager.feedBucket).getObjectSummaries()) {
+		key = o.getKey();
+		if (key.equals("public/"+fileName) || key.equals("gtfs/"+fileName)) {
+		    return downloadFile(s3.getObject(DataManager.feedBucket, key), fileName, res);
+		}
+	    }
+	} else {
+	    halt(400, "Feed download token not valid");
         }
-
-        FeedVersion version = token.getFeedVersion();
-
-        token.delete();
-
-        return downloadFile(version.getGtfsFile(), version.id, res);
+	return null;
     }
-
+    
     public static void register (String apiPrefix) {
+	options(apiPrefix + "secure/feedversion", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/feedversion/:id", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion/:id", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/feedversion/:id/validation", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion/:id/validation", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/feedversion/:id/downloadtoken", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion/:id/downloadtoken", (q, p) -> { return "";} );
+	options(apiPrefix + "secure/feedversion/:id/download", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion/:id/validate", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion/:id/isochrones", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion/snapshot", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion/:id/rename", (q, p) -> { return "";} );
+	options(apiPrefix + "public/feedversion/:id/publish", (q, p) -> { return "";} );
+	options(apiPrefix + "downloadfeed/:token", (q, p) -> { return "";} );
+	
         get(apiPrefix + "secure/feedversion/:id", FeedVersionController::getFeedVersion, json::write);
         get(apiPrefix + "secure/feedversion/:id/download", FeedVersionController::downloadFeedVersionDirectly);
         get(apiPrefix + "secure/feedversion/:id/downloadtoken", FeedVersionController::getFeedDownloadCredentials, json::write);

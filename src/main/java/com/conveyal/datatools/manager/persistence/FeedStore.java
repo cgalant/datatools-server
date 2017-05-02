@@ -16,7 +16,6 @@ import com.amazonaws.services.s3.transfer.TransferManager;
 import com.amazonaws.services.s3.transfer.TransferManagerBuilder;
 import com.amazonaws.services.s3.transfer.Upload;
 import com.conveyal.datatools.manager.DataManager;
-import com.conveyal.datatools.manager.controllers.api.GtfsApiController;
 import com.conveyal.datatools.manager.models.FeedSource;
 import gnu.trove.list.TLongList;
 import gnu.trove.list.array.TLongArrayList;
@@ -65,11 +64,11 @@ public class FeedStore {
         if (subdir != null) pathString += File.separator + subdir;
         path = getPath(pathString);
     }
-
-    public static void initializeS3 () {
+    
+    public static void initializeS3() {
         // s3 storage
-        if (DataManager.useS3 || GtfsApiController.extensionType.equals("mtc")){
-            FeedStore.s3Bucket = DataManager.getConfigPropertyAsText("application.data.gtfs_s3_bucket");
+        if (DataManager.useS3){
+            s3Bucket = DataManager.getConfigPropertyAsText("application.data.gtfs_s3_bucket");
             AmazonS3ClientBuilder builder = AmazonS3ClientBuilder.standard()
                     .withCredentials(getAWSCreds());
 
@@ -148,8 +147,8 @@ public class FeedStore {
     }
 
     private static AWSCredentialsProvider getAWSCreds () {
-        if (FeedStore.S3_CREDENTIALS_FILENAME != null) {
-            return new ProfileCredentialsProvider(FeedStore.S3_CREDENTIALS_FILENAME, "default");
+        if (S3_CREDENTIALS_FILENAME != null) {
+            return new ProfileCredentialsProvider(S3_CREDENTIALS_FILENAME, "default");
         } else {
             // default credentials providers, e.g. IAM role
             return new DefaultAWSCredentialsProviderChain();
@@ -165,13 +164,12 @@ public class FeedStore {
      */
     public File getFeed (String id) {
         // local storage
-        if (!DataManager.useS3) {
-            File feed = new File(path, id);
-            // don't let folks get feeds outside of the directory
-            if (feed.getParentFile().equals(path) && feed.exists()) return feed;
-        }
+    	File feed = new File(path, id);
+    	// don't let folks get feeds outside of the directory
+    	if (feed.getParentFile().equals(path) && feed.exists())
+    		return feed;
         // s3 storage
-        else {
+    	if (DataManager.useS3) {
             try {
                 LOG.info("Downloading feed from s3");
                 S3Object object = s3Client.getObject(
@@ -261,7 +259,7 @@ public class FeedStore {
     }
 
     private File uploadToS3 (InputStream inputStream, String id, FeedSource feedSource) {
-        if(this.s3Bucket != null) {
+        if(s3Bucket != null) {
             try {
                 // Use tempfile
                 LOG.info("Creating temp file for {}", id);
@@ -305,7 +303,7 @@ public class FeedStore {
                     // copy to [feedSourceId].zip
                     String copyKey = s3Prefix + feedSource.id + ".zip";
                     CopyObjectRequest copyObjRequest = new CopyObjectRequest(
-                            this.s3Bucket, getS3Key(id), this.s3Bucket, copyKey);
+                            s3Bucket, getS3Key(id), s3Bucket, copyKey);
                     s3Client.copyObject(copyObjRequest);
                 }
                 return tempFile;

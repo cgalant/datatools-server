@@ -7,6 +7,8 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 
+import com.amazonaws.services.s3.model.S3Object;
+
 import static spark.Spark.halt;
 
 /**
@@ -39,6 +41,29 @@ public class SparkUtils {
         return res.raw();
     }
 
+    public static Object downloadFile(S3Object object, String fileName, Response res) {
+	res.raw().setContentType("application/octet-stream");
+	res.raw().setHeader("Content-Disposition", "attachment; filename=" + fileName);
+	
+	try {
+	    BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(res.raw().getOutputStream());
+	    BufferedInputStream bufferedInputStream = new BufferedInputStream(object.getObjectContent());
+	    
+	    byte[] buffer = new byte[1024];
+            int len;
+            while ((len = bufferedInputStream.read(buffer)) > 0) {
+		bufferedOutputStream.write(buffer, 0, len);
+	    }
+	    
+	    bufferedOutputStream.flush();
+            bufferedOutputStream.close();
+        } catch (Exception e) {
+	    halt(500, "Error serving GTFS file");
+	}
+	
+	return res.raw();
+    }
+    
     public static String formatJSON(String message, int code) {
         return String.format("{\"result\":\"ERR\",\"message\":\"%s\",\"code\":%d}", message, code);
     }

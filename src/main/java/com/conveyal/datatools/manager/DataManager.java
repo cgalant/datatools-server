@@ -218,6 +218,15 @@ public class DataManager {
 //            }
 //        });
         // return index.html for any sub-directory
+	get("/datasets", (request, response) -> {
+		response.redirect("http://data.catalogue.global");
+		return "";
+	    });
+	get("/feeds/*", (request, response) -> {
+		response.redirect("http://data.catalogue.global/"+request.pathInfo());
+		return "";
+	    });
+	
         get("/*", (request, response) -> {
             response.type("text/html");
             return index;

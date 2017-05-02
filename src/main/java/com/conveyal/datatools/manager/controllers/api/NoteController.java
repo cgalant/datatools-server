@@ -146,6 +146,7 @@ public class NoteController {
     }
 
     public static void register (String apiPrefix) {
+	options(apiPrefix + "secure/note", (q, p) -> { return "";});
         get(apiPrefix + "secure/note", NoteController::getAllNotes, json::write);
         post(apiPrefix + "secure/note", NoteController::createNote, json::write);
     }
