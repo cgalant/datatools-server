@@ -2,7 +2,7 @@ application:
   notifications_enabled: true or false
   assets_bucket: aasetBucketName
   public_url: website url
-  port: api port number
+  port: 4000
   cors:
     enabled: true or false
     origins: CORS origine
@@ -10,10 +10,10 @@ application:
     methos: GET, PUT, POST
   data:
     aws_role: arn:aws:iam::8888888888:role/XXXXXXXXX
-    mapdb: /root/data/mapdb
-    gtfs: /root/data/gtfs
-    editor_mapdb: /root/data/editor
-    regions: /root/data/geojson
+    mapdb: /tmp
+    gtfs: /tmp
+    editor_mapdb: /tmp
+    regions: /tmp
     gtfs_s3_bucket: gtfsBucketName
     s3_region: eu-west-1
     s3_credentials_file: Credentials file path

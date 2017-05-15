@@ -58,7 +58,11 @@ public class FeedSourceController {
                     // if requesting public sources and source is not public; skip source
                     if (publicFilter && !source.isPublic)
                         continue;
-                    sources.add(source);
+// TODO. ZAK. add owned sources
+                    if (source.userId != null && source.userId.equals(requestingUser.getUser_id())) {
+                    	LOG.info("[ZAK] source.userId="+source.userId+" and requestingUser.getUser_id()="+requestingUser.getUser_id());
+                    	sources.add(source);
+                    }
                 }
             }
         }
@@ -73,7 +77,6 @@ public class FeedSourceController {
                     source != null && source.projectId != null &&
                     (user.canManageFeed(orgId, source.projectId, source.id) || user.canViewFeed(orgId, source.projectId, source.id))
                 ) {
-
                     sources.add(source);
                 }
             }
@@ -112,6 +115,8 @@ public class FeedSourceController {
         }*/
 
         source = new FeedSource();
+        Auth0UserProfile requestingUser = req.attribute("user");
+        source.setUser(requestingUser);
 
         applyJsonToFeedSource(source, req.body());
 
@@ -235,12 +240,12 @@ public class FeedSourceController {
 
     public static FeedSource deleteFeedSource(Request req, Response res) {
         FeedSource source = requestFeedSourceById(req, "manage");
-
         try {
-	    Project project = Project.get(source.projectId);
+        	Project project = Project.get(source.projectId);
             source.delete();
-	    if (project.getProjectFeedSources() == null || project.getProjectFeedSources().isEmpty())
-		project.delete();
+            if (project.getProjectFeedSources() == null || project.getProjectFeedSources().isEmpty()) {
+            	project.delete();
+            }
             return source;
         } catch (Exception e) {
             e.printStackTrace();

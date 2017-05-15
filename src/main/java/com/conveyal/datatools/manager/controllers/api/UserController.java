@@ -152,37 +152,8 @@ public class UserController {
         Auth0UserProfile user = getUserById(userId);
 
         LOG.info("Updating user {}", user.getEmail());
-
-        String url = "https://" + AUTH0_DOMAIN + "/api/v2/users/" + URLEncoder.encode(userId, "UTF-8");
-        String charset = "UTF-8";
-
-
-        HttpPatch request = new HttpPatch(url);
-
-        request.addHeader("Authorization", "Bearer " + AUTH0_API_TOKEN);
-        request.setHeader("Accept-Charset", charset);
-        request.setHeader("Content-Type", "application/json");
-
-        JsonNode jsonNode = mapper.readTree(req.body());
-//        JsonNode data = mapper.readValue(jsonNode.get("data"), Auth0UserProfile.DatatoolsInfo.class); //jsonNode.get("data");
-        JsonNode data = jsonNode.get("data");
-        System.out.println(data.asText());
-        Iterator<Map.Entry<String, JsonNode>> fieldsIter = data.fields();
-        while (fieldsIter.hasNext()) {
-            Map.Entry<String, JsonNode> entry = fieldsIter.next();
-            System.out.println(entry.getValue());
-        }
-//        if (!data.has("client_id")) {
-//            ((ObjectNode)data).put("client_id", DataManager.config.get("auth0").get("client_id").asText());
-//        }
-        String json = "{ \"app_metadata\": { \"datatools\" : " + data + " }}";
-        System.out.println(json);
-        HttpEntity entity = new ByteArrayEntity(json.getBytes(charset));
-        request.setEntity(entity);
-
-        HttpClient client = HttpClientBuilder.create().build();
-        HttpResponse response = client.execute(request);
-        String result = EntityUtils.toString(response.getEntity());
+        
+        String result = user.update(mapper.readTree(req.body()));
 
         return mapper.readTree(result);
     }

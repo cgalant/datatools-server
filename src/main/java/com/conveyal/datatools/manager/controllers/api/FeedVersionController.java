@@ -404,13 +404,17 @@ public class FeedVersionController  {
 
     private static Object downloadFeedVersionWithToken (Request req, Response res) {
 	String tk = req.params("token");
-        
+    LOG.info("[ZAK] tk="+tk);
 	FeedDownloadToken token = FeedDownloadToken.get(tk);
-        
+    LOG.info("[ZAK] token="+token);
 	String sessionToken = new String(Base64.getUrlDecoder().decode(tk));
-        String fileName = sessionToken.substring(sessionToken.lastIndexOf("...")+3);
-        sessionToken = sessionToken.substring(0, sessionToken.lastIndexOf("..."));
+    LOG.info("[ZAK] sessionToken="+sessionToken);
+    String fileName = sessionToken.substring(sessionToken.lastIndexOf("...")+3);
+    LOG.info("[ZAK] fileName="+fileName);
+    sessionToken = sessionToken.substring(0, sessionToken.lastIndexOf("..."));
+    LOG.info("[ZAK] sessionToken="+sessionToken);
 	Credentials cred = getS3Credentials(sessionToken);
+    LOG.info("[ZAK] cred="+cred);
         
 	if (token != null) {
 	    FeedVersion version = token.getFeedVersion();

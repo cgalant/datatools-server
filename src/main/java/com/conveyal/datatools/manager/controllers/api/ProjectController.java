@@ -110,6 +110,12 @@ public class ProjectController {
         Project proj = new Project();
 
         applyJsonToProject(proj, req.body());
+        
+        Auth0UserProfile userProfile = req.attribute("user");
+        if (!userProfile.canAdministerApplication())
+        	userProfile.setAdminApp();
+        //userProfile.setAdminProject(proj.id);
+        
         proj.save();
 
         return proj;

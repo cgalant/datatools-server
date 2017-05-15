@@ -16,7 +16,7 @@ import java.util.stream.Collectors;
  * Created by landon on 5/10/16.
  */
 public class FeedValidationResult implements Serializable {
-    private static final long serialVersionUID = 1L;
+    private static final long serialVersionUID = 206244151469028320L;
     @JsonProperty
     public LoadStatus loadStatus;
     public String loadFailureReason;
