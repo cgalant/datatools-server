@@ -365,5 +365,7 @@ public class StopController {
         post(apiPrefix + "secure/stop", StopController::createStop, json::write);
         put(apiPrefix + "secure/stop/:id", StopController::updateStop, json::write);
         delete(apiPrefix + "secure/stop/:id", StopController::deleteStop, json::write);
+        get(apiPrefix + "public/stop", StopController::getStop, json::write);
+        get(apiPrefix + "public/stop/:id", StopController::getStop, json::write);
     }
 }

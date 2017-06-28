@@ -28,7 +28,8 @@ public class NoteController {
 
     public static Collection<Note> getAllNotes (Request req, Response res) throws JsonProcessingException {
         Auth0UserProfile userProfile = req.attribute("user");
-        if(userProfile == null) halt(401);
+        // [ZAK] TO ALLOW public view of notes
+        //if(userProfile == null) halt(401);
 
         String typeStr = req.queryParams("type");
         String objectId = req.queryParams("objectId");
@@ -68,7 +69,7 @@ public class NoteController {
         }
         String orgId = s.getOrganizationId();
         // check if the user has permission
-        if (userProfile.canAdministerProject(s.projectId, orgId) || userProfile.canViewFeed(orgId, s.projectId, s.id)) {
+        if ((userProfile != null && (userProfile.canAdministerProject(s.projectId, orgId) || userProfile.canViewFeed(orgId, s.projectId, s.id))) || (s.isPublic)) {
             return model.getNotes();
         }
         else {
@@ -149,5 +150,6 @@ public class NoteController {
 	options(apiPrefix + "secure/note", (q, p) -> { return "";});
         get(apiPrefix + "secure/note", NoteController::getAllNotes, json::write);
         post(apiPrefix + "secure/note", NoteController::createNote, json::write);
+        get(apiPrefix + "public/note", NoteController::getAllNotes, json::write);
     }
 }

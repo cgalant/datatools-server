@@ -374,5 +374,7 @@ public class RouteController {
         put(apiPrefix + "secure/route/:id", RouteController::updateRoute, json::write);
         post(apiPrefix + "secure/route/:id/uploadbranding", RouteController::uploadRouteBranding, json::write);
         delete(apiPrefix + "secure/route/:id", RouteController::deleteRoute, json::write);
+        get(apiPrefix + "public/route/:id", RouteController::getRoute, json::write);
+        get(apiPrefix + "public/route", RouteController::getRoute, json::write);
     }
 }

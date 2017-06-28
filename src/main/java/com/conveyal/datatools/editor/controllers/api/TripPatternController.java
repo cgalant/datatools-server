@@ -227,5 +227,7 @@ public class TripPatternController {
         post(apiPrefix + "secure/trippattern", TripPatternController::createTripPattern, json::write);
         put(apiPrefix + "secure/trippattern/:id", TripPatternController::updateTripPattern, json::write);
         delete(apiPrefix + "secure/trippattern/:id", TripPatternController::deleteTripPattern, json::write);
+        get(apiPrefix + "public/trippattern/:id", TripPatternController::getTripPattern, json::write);
+        get(apiPrefix + "public/trippattern", TripPatternController::getTripPattern, json::write);
     }
 }
