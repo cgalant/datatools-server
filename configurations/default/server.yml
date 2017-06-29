@@ -10,10 +10,10 @@ application:
     methos: GET, PUT, POST
   data:
     aws_role: arn:aws:iam::8888888888:role/XXXXXXXXX
-    mapdb: /tmp
-    gtfs: /tmp
-    editor_mapdb: /tmp
-    regions: /tmp
+    mapdb: ./target/tmp
+    gtfs: ./target/tmp
+    editor_mapdb: ./target/tmp
+    regions: ./target/tmp
     gtfs_s3_bucket: gtfsBucketName
     s3_region: eu-west-1
     s3_credentials_file: Credentials file path
