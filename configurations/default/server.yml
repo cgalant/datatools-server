@@ -4,12 +4,12 @@ application:
   notifications_enabled: false
   port: 4000
   data:
-    mapdb: /tmp
-    gtfs: /tmp
-    editor_mapdb: /tmp
-    regions: /tmp
+    mapdb: ./target/tmp
+    gtfs: ./target/tmp
+    editor_mapdb: ./target/tmp
+    regions: ./target/tmp
     use_s3_storage: false
-    s3_region: us-east-1
+    s3_region: eu-west-1
     aws_role: arn:aws:iam::${AWS_ACCOUNT_NUMBER}:role/${AWS_ROLE_NAME}
     gtfs_s3_bucket: bucket-name
 modules:
