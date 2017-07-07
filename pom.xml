@@ -10,19 +10,32 @@
 
     <!-- Define where the source code for project lives -->
     <scm>
-        <connection>scm:git:https://github.com/conveyal/datatools-server.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/conveyal/datatools-server.git</developerConnection>
-        <url>https://github.com/conveyal/datatools-server.git</url>
+        <connection>scm:git:https://github.com/catalogueglobal/datatools-server.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/catalogueglobal/datatools-server.git</developerConnection>
+        <url>https://github.com/catalogueglobal/datatools-server.git</url>
     </scm>
+
+    <properties>
+        <docker.image.name>${project.artifactId}</docker.image.name>
+        <docker.image.version>${project.version}</docker.image.version>
+
+        <!-- defined in the maven config file of the CI server -->
+        <docker.repository></docker.repository>
+        <maven.repository.url></maven.repository.url>
+        <maven.releases.repository>${maven.repository.url}/repository/maven-releases/</maven.releases.repository>
+        <maven.snapshots.repository>${maven.repository.url}/repository/maven-snapshots/</maven.snapshots.repository>
+    </properties>
 
     <!-- Define where the artifacts produced by this build will be deployed -->
     <distributionManagement>
         <repository>
-            <!-- Also used as snapshotRepository by default -->
-            <id>conveyal-maven-repo</id>
-            <name>Conveyal Maven Repository</name>
-            <url>s3://maven.conveyal.com/</url>
+            <id>maven-releases</id>
+            <url>${maven.releases.repository}</url>
         </repository>
+        <snapshotRepository>
+            <id>maven-snapshots</id>
+            <url>${maven.snapshots.repository}</url>
+        </snapshotRepository>
     </distributionManagement>
 
     <build>
@@ -67,6 +80,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.6.1</version>
                 <configuration>
                     <source>1.8</source>
                     <target>1.8</target>
@@ -99,6 +113,70 @@
         </extensions>
 
     </build>
+
+    <profiles>
+        <profile>
+            <!-- continuous integration profile -->
+            <id>ci</id>
+            <build>
+                <plugins>
+                    <!-- BUILD DOCKER IMAGE -->
+                    <plugin>
+                        <groupId>com.spotify</groupId>
+                        <artifactId>docker-maven-plugin</artifactId>
+                        <version>0.4.13</version>
+                        <configuration>
+                            <imageName>${docker.image.name}</imageName>
+                            <imageTags>
+                                <imageTag>${docker.image.version}</imageTag>
+                                <imageTag>latest</imageTag>
+                            </imageTags>
+                            <forceTags>true</forceTags>
+                            <dockerDirectory>src/main/docker</dockerDirectory>
+                            <resources>
+                                <resource>
+                                    <targetPath>/</targetPath>
+                                    <directory>${project.build.directory}</directory>
+                                    <include>*.jar</include>
+                                </resource>
+                            </resources>
+                            <serverId>tdf-docker-repo</serverId>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>build-image</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>build</goal>
+                                </goals>
+                            </execution>
+                            <execution>
+                                <id>tag-image</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>tag</goal>
+                                </goals>
+                                <configuration>
+                                    <image>${docker.image.name}:${docker.image.version}</image>
+                                    <newName>${docker.repository}/${docker.image.name}:${docker.image.version}</newName>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>push-image</id>
+                                <phase>deploy</phase>
+                                <goals>
+                                    <goal>push</goal>
+                                </goals>
+                                <configuration>
+                                    <imageName>${docker.repository}/${docker.image.name}:${docker.image.version}</imageName>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
     <repositories>
         <!-- Hack to force maven to check central first. Maven central is inherited from the superpom,
              but ends up at the end of the list. Though most of the time the artifact is in central,
@@ -256,9 +334,9 @@
 
         <!-- https://mvnrepository.com/artifact/org.openstreetmap.osmosis/osmosis-core -->
         <!--<dependency>-->
-            <!--<groupId>org.openstreetmap.osmosis</groupId>-->
-            <!--<artifactId>osmosis-core</artifactId>-->
-            <!--<version>0.45</version>-->
+        <!--<groupId>org.openstreetmap.osmosis</groupId>-->
+        <!--<artifactId>osmosis-core</artifactId>-->
+        <!--<version>0.45</version>-->
         <!--</dependency>-->
 
     </dependencies>
