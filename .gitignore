@@ -18,3 +18,8 @@ configurations/*
 # Secret config files
 env.yml
 env.yml-original
+
+# IDE settings
+.classpath
+.project
+.settings/
