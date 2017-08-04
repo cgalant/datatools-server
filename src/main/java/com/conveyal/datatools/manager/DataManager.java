@@ -78,12 +78,16 @@ public class DataManager {
     public static final String API_PREFIX = "/api/manager/";
     public static final String EDITOR_API_PREFIX = "/api/editor/";
     public static final String publicPath = "(" + DataManager.API_PREFIX + "|" + DataManager.EDITOR_API_PREFIX + ")public/.*";
-    public static final String DEFAULT_ENV = "configurations/default/env.yml";
-    public static final String DEFAULT_CONFIG = "configurations/default/server.yml";
+    public static final String DEFAULT_ENV = "configurations/local/env.yml";
+    public static final String DEFAULT_CONFIG = "configurations/local/server.yml";
 
     public static DataSource GTFS_DATA_SOURCE;
 
     public static void main(String[] args) throws IOException {
+
+        LOG.info("------------------------------------------------------------");
+        LOG.info("--------------------- SQL VERSION --------------------------");
+        LOG.info("------------------------------------------------------------");
 
         // load config
         loadConfig(args);
@@ -240,7 +244,7 @@ public class DataManager {
         JsonNode node = config;
         for(int i = 0; i < parts.length; i++) {
             if(node == null) {
-                LOG.warn("Config property {} not found", name);
+                //LOG.warn("Config property {} not found", name);
                 return null;
             }
             node = node.get(parts[i]);
