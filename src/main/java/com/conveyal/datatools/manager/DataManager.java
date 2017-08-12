@@ -48,13 +48,14 @@ public class DataManager {
 
     public static final Logger LOG = LoggerFactory.getLogger(DataManager.class);
 
-    public static JsonNode config;
+    public static JsonNode envConfig;
     public static JsonNode serverConfig;
 
-    public static JsonNode gtfsPlusConfig;
     public static JsonNode gtfsConfig;
+    public static JsonNode gtfsPlusConfig;
 
-    // TODO: define type for ExternalFeedResource Strings
+    // FIXME: why are the following Maps keyed on Strings? Should we define enums instead, or just not have keys and use a List/Set?
+
     public static final Map<String, ExternalFeedResource> feedResources = new HashMap<>();
 
     public static ConcurrentHashMap<String, ConcurrentHashSet<MonitorableJob>> userJobsMap = new ConcurrentHashMap<>();
@@ -64,9 +65,10 @@ public class DataManager {
     private static final ObjectMapper yamlMapper = new ObjectMapper(new YAMLFactory());
 
 
-    // heavy executor should contain long-lived CPU-intensive tasks (e.g., feed loading/validation)
+    // The heavy executor should contain long-lived CPU-intensive tasks (e.g. feed loading/validation).
     public static Executor heavyExecutor = Executors.newFixedThreadPool(4); // Runtime.getRuntime().availableProcessors()
-    // light executor is for tasks for things that should finish quickly (e.g., email notifications)
+
+    // The light executor is for tasks for things that should finish quickly (e.g. email notifications).
     public static Executor lightExecutor = Executors.newSingleThreadExecutor();
 
     public static String feedBucket;
@@ -78,21 +80,21 @@ public class DataManager {
     public static final String API_PREFIX = "/api/manager/";
     public static final String EDITOR_API_PREFIX = "/api/editor/";
     public static final String publicPath = "(" + DataManager.API_PREFIX + "|" + DataManager.EDITOR_API_PREFIX + ")public/.*";
-    public static final String DEFAULT_ENV = "configurations/default/env.yml";
-    public static final String DEFAULT_CONFIG = "configurations/default/server.yml";
+    public static final String DEFAULT_ENV_CONFIG = "configurations/default/env.yml";
+    public static final String DEFAULT_SERVER_CONFIG = "configurations/default/server.yml";
 
     public static DataSource GTFS_DATA_SOURCE;
 
     public static void main(String[] args) throws IOException {
 
-        // load config
+        // Load the two YAML configuration files
         loadConfig(args);
 
-        // set port
-        if (getConfigProperty("application.port") != null) {
-            port(Integer.parseInt(getConfigPropertyAsText("application.port")));
-        }
-        useS3 = "true".equals(getConfigPropertyAsText("application.data.use_s3_storage"));
+        // Set the server port number based on the configuration loaded above
+        int port = getConfigPropertyAsInt("application.port", 4000);
+        port(port);
+
+        useS3 = "true".equalsIgnoreCase(getConfigPropertyAsText("application.data.use_s3_storage"));
 
         GTFS_DATA_SOURCE = GTFS.createDataSource(
                 getConfigPropertyAsText("GTFS_DATABASE_URL"),
@@ -114,12 +116,10 @@ public class DataManager {
         awsRole = getConfigPropertyAsText("application.data.aws_role");
         bucketFolder = FeedStore.s3Prefix;
 
-        // initialize GTFS GraphQL API service
+        // Register the GET and POST endpoints for the GraphQL GTFS API with Spark
         GraphQLMain.initialize(GTFS_DATA_SOURCE, API_PREFIX);
-        LOG.info("Initialized gtfs-api at localhost:port{}", API_PREFIX);
-
+        // Register the remaining API endpoints with Spark
         registerRoutes();
-
         registerExternalResources();
     }
 
@@ -214,7 +214,7 @@ public class DataManager {
         boolean fromServerConfig = hasConfigProperty(serverConfig, name);
         if(fromServerConfig) return fromServerConfig;
 
-        return hasConfigProperty(config, name);
+        return hasConfigProperty(envConfig, name);
     }
 
     public static boolean hasConfigProperty(JsonNode config, String name) {
@@ -227,35 +227,50 @@ public class DataManager {
         return node != null;
     }
 
-    public static JsonNode getConfigProperty(String name) {
-        // try the server config first, then the main config
-        JsonNode fromServerConfig = getConfigProperty(serverConfig, name);
-        if(fromServerConfig != null) return fromServerConfig;
-
-        return getConfigProperty(config, name);
+    /**
+     * Try to get a configuration JSON node specified with a dot-separated path. First search in the server.yml config,
+     * then fall back on the env.yml config. FIXME why do we even have two separate config files then?
+     */
+    public static JsonNode getConfigProperty (String name) {
+        JsonNode configItem = getConfigProperty(serverConfig, name);
+        if (configItem == null) configItem = getConfigProperty(envConfig, name);
+        if (configItem == null) LOG.warn("Config property {} not found in either server or env config file.", name);
+        return configItem;
     }
 
+    /**
+     * @param config a JSON node, the root of a tree within which to search for the config key
+     * @param name a hierarchical, dot-separated path to the config key to be fetched within the JSON node tree
+     * @return the found JSON node, or null if the node is not found.
+     */
     public static JsonNode getConfigProperty(JsonNode config, String name) {
-        String parts[] = name.split("\\.");
+        // Descend the tree rooted at the supplied config node one level at a time.
         JsonNode node = config;
-        for(int i = 0; i < parts.length; i++) {
-            if(node == null) {
-                LOG.warn("Config property {} not found", name);
-                return null;
-            }
-            node = node.get(parts[i]);
+        for (String pathSegment : name.split("\\.")) {
+            node = node.get(pathSegment);
+            // Missing config warnings are issued in the caller, do not do so here to avoid cluttering the logs.
+            if (node == null) return null;
         }
         return node;
     }
 
-    public static String getConfigPropertyAsText(String name) {
+    /**
+     * Fetch a configuration element expected to be text, handling the case where it is missing by returning null.
+     */
+    public static String getConfigPropertyAsText (String name) {
         JsonNode node = getConfigProperty(name);
-        if (node != null) {
-            return node.asText();
-        } else {
-            LOG.warn("Config property {} not found", name);
-            return null;
-        }
+        if (node != null) return node.asText();
+        else return null;
+    }
+
+    /**
+     * Fetch a configuration element expected to be an integer,
+     * handling the case where it is missing by returning a default.
+     */
+    public static int getConfigPropertyAsInt (String name, int defaultValue) {
+        JsonNode node = getConfigProperty(name);
+        if (node != null) return node.asInt();
+        else return defaultValue;
     }
 
     public static boolean isModuleEnabled(String moduleName) {
@@ -283,27 +298,32 @@ public class DataManager {
             registerExternalResource(new TransitFeedsFeedResource());
         }
     }
+
+    /**
+     * Based on command line arguments (if provided), open env and server config files and convert them from YAML to
+     * internal representation as Jackson JSON node trees.
+     */
     private static void loadConfig (String[] args) throws IOException {
-        FileInputStream configStream;
-        FileInputStream serverConfigStream;
-
+        String envConfigPath = DEFAULT_ENV_CONFIG;
+        String serverConfigPath = DEFAULT_SERVER_CONFIG;
         if (args.length == 0) {
-            LOG.warn("Using default env.yml: {}", DEFAULT_ENV);
-            LOG.warn("Using default server.yml: {}", DEFAULT_CONFIG);
-            configStream = new FileInputStream(new File(DEFAULT_ENV));
-            serverConfigStream = new FileInputStream(new File(DEFAULT_CONFIG));
+            LOG.warn("No command line arguments specified, using default configuration file paths.");
+        } else {
+            if (args.length != 2) {
+                LOG.error("Wrong number of command line arguments. Exiting.");
+                System.exit(-1);
+            }
+            envConfigPath = args[0];
+            serverConfigPath = args[1];
         }
-        else {
-            LOG.info("Loading env.yml: {}", args[0]);
-            LOG.info("Loading server.yml: {}", args[1]);
-            configStream = new FileInputStream(new File(args[0]));
-            serverConfigStream = new FileInputStream(new File(args[1]));
-        }
-
-        config = yamlMapper.readTree(configStream);
-        serverConfig = yamlMapper.readTree(serverConfigStream);
+        LOG.info("Loading env config YAML from path: {}", envConfigPath);
+        envConfig = yamlMapper.readTree(new FileInputStream(new File(envConfigPath)));
+        LOG.info("Loading server config YAML from path: {}", serverConfigPath);
+        serverConfig = yamlMapper.readTree(new FileInputStream(new File(serverConfigPath)));
     }
+
     private static void registerExternalResource(ExternalFeedResource resource) {
         feedResources.put(resource.getResourceType(), resource);
     }
+
 }
