@@ -13,12 +13,14 @@ import com.conveyal.datatools.manager.models.OtpBuildConfig;
 import com.conveyal.datatools.manager.models.OtpRouterConfig;
 import com.conveyal.datatools.manager.models.OtpServer;
 import com.conveyal.datatools.manager.models.Project;
+import com.conveyal.datatools.manager.persistence.Persistence;
 import com.conveyal.datatools.manager.utils.json.JsonManager;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
+import org.bson.Document;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,7 +80,8 @@ public class ProjectController {
 
     private static Collection<Project> getAllProjects(Request req, Response res) throws JsonProcessingException {
         Auth0UserProfile userProfile = req.attribute("user");
-        return Project.getAll().stream()
+        // FIXME: move this filtering into database query
+        return Persistence.getProjects().stream()
                 .filter(p -> req.pathInfo().matches(publicPath) || userProfile.hasProject(p.id, p.organizationId))
                 .map(p -> requestProject(req, p, "view"))
                 .collect(Collectors.toList());
@@ -90,12 +93,14 @@ public class ProjectController {
 
     private static Project createProject(Request req, Response res) {
         Project p = new Project();
+        // TODO: use Persistence createProject
+        Persistence.updateProject(p.id, Document.parse(req.body()));
         try {
             applyJsonToProject(p, req.body());
             p.save();
         } catch (Exception e) {
             e.printStackTrace();
-            halt(400, SparkUtils.formatJSON("Error saving new project"));
+            halt(400, SparkUtils.formatJSON("Error saving new retrieveProject"));
         }
         return p;
     }
@@ -107,7 +112,7 @@ public class ProjectController {
             p.save();
         } catch (Exception e) {
             e.printStackTrace();
-            halt(400, SparkUtils.formatJSON("Error saving project"));
+            halt(400, SparkUtils.formatJSON("Error saving retrieveProject"));
         }
         return p;
     }
@@ -225,20 +230,20 @@ public class ProjectController {
      * Helper function returns feed source if user has permission for specified action.
      * @param req spark Request object from API request
      * @param action action type (either "view" or "manage")
-     * @return requested project
+     * @return requested retrieveProject
      */
     private static Project requestProjectById(Request req, String action) {
         String id = req.params("id");
         if (id == null) {
             halt(SparkUtils.formatJSON("Please specify id param", 400));
         }
-        return requestProject(req, Project.get(id), action);
+        return requestProject(req, Persistence.getProjectById(id), action);
     }
     private static Project requestProject(Request req, Project p, String action) {
         Auth0UserProfile userProfile = req.attribute("user");
         boolean publicFilter = req.pathInfo().matches(publicPath);
 
-        // check for null project
+        // check for null retrieveProject
         if (p == null) {
             halt(400, SparkUtils.formatJSON("Project ID does not exist", 400));
             return null;
@@ -264,25 +269,25 @@ public class ProjectController {
 
         // if requesting all projects via public route, include public feed sources
         if (publicFilter){
-            p.feedSources = p.getProjectFeedSources().stream()
+            p.feedSources = p.retrieveProjectFeedSources().stream()
                     .filter(fs -> fs.isPublic)
                     .collect(Collectors.toList());
         } else {
             p.feedSources = null;
             if (!authorized) {
-                halt(403, SparkUtils.formatJSON("User not authorized to perform action on project", 403));
+                halt(403, SparkUtils.formatJSON("User not authorized to perform action on retrieveProject", 403));
                 return null;
             }
         }
-        // if we make it here, user has permission and it's a valid project
+        // if we make it here, user has permission and it's a valid retrieveProject
         return p;
     }
 
     private static HttpServletResponse downloadMergedFeed(Request req, Response res) throws IOException {
         Project p = requestProjectById(req, "view");
 
-        // get feed sources in project
-        Collection<FeedSource> feeds = p.getProjectFeedSources();
+        // retrieveById feed sources in retrieveProject
+        Collection<FeedSource> feeds = p.retrieveProjectFeedSources();
 
         // create temp merged zip file to add feed content to
         File mergedFile;
@@ -305,7 +310,7 @@ public class ProjectController {
             throw new RuntimeException(e);
         }
 
-        LOG.info("Created project merge file: " + mergedFile.getAbsolutePath());
+        LOG.info("Created retrieveProject merge file: " + mergedFile.getAbsolutePath());
 
         // map of feed versions to table entries contained within version's GTFS
         Map<FeedSource, ZipFile> feedSourceMap = new HashMap<>();
@@ -313,7 +318,7 @@ public class ProjectController {
         // collect zipFiles for each feedSource before merging tables
         for (FeedSource fs : feeds) {
             // check if feed source has version (use latest)
-            FeedVersion version = fs.getLatest();
+            FeedVersion version = fs.retrieveLatest();
             if (version == null) {
                 LOG.info("Skipping {} because it has no feed versions", fs.name);
                 continue;
@@ -321,7 +326,7 @@ public class ProjectController {
             // modify feed version to use prepended feed id
             LOG.info("Adding {} feed to merged zip", fs.name);
             try {
-                File file = version.getGtfsFile();
+                File file = version.retrieveGtfsFile();
                 ZipFile zipFile = new ZipFile(file);
                 feedSourceMap.put(fs, zipFile);
             } catch(Exception e) {
@@ -436,7 +441,7 @@ public class ProjectController {
                                 JsonNode fieldNode = fieldsNode.get(v);
                                 String fieldName = fieldNode.get("name").asText();
 
-                                // get index of field from GTFS spec as it appears in feed
+                                // retrieveById index of field from GTFS spec as it appears in feed
                                 int index = fieldList.indexOf(fieldName);
                                 String val = "";
                                 try {
@@ -482,12 +487,12 @@ public class ProjectController {
         Auth0UserProfile userProfile = req.attribute("user");
         String id = req.params("id");
         if (id == null) {
-            halt(400, "must provide project id!");
+            halt(400, "must provide retrieveProject id!");
         }
-        Project p = Project.get(id);
+        Project p = Project.retrieve(id);
 
         if (p == null)
-            halt(400, "no such project!");
+            halt(400, "no such retrieveProject!");
 
         // run as sync job; if it gets too slow change to async
         new MakePublicJob(p, userProfile.getUser_id()).run();
@@ -497,7 +502,7 @@ public class ProjectController {
     private static Project thirdPartySync(Request req, Response res) throws Exception {
         Auth0UserProfile userProfile = req.attribute("user");
         String id = req.params("id");
-        Project proj = Project.get(id);
+        Project proj = Project.retrieve(id);
 
         String syncType = req.params("type");
 
@@ -518,10 +523,10 @@ public class ProjectController {
     public static ScheduledFuture scheduleAutoFeedFetch (String id, int hour, int minute, int intervalInDays, String timezoneId){
         TimeUnit minutes = TimeUnit.MINUTES;
         try {
-            // First cancel any already scheduled auto fetch task for this project id.
+            // First cancel any already scheduled auto fetch task for this retrieveProject id.
             cancelAutoFetch(id);
 
-            Project p = Project.get(id);
+            Project p = Project.retrieve(id);
             if (p == null) return null;
 
             ZoneId timezone;
@@ -563,7 +568,7 @@ public class ProjectController {
     }
 
     private static void cancelAutoFetch(String id){
-        Project p = Project.get(id);
+        Project p = Project.retrieve(id);
         if ( p != null && DataManager.autoFetchMap.get(p.id) != null) {
             LOG.info("Cancelling auto-fetch for projectID: {}", p.id);
             DataManager.autoFetchMap.get(p.id).cancel(true);
