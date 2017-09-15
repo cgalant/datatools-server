@@ -289,7 +289,7 @@ public class DataManager {
             registerExternalResource(new TransitFeedsFeedResource());
         }
     }
-    private static void loadConfig (String[] args) throws IOException {
+    public static void loadConfig (String[] args) throws IOException {
         FileInputStream configStream;
         FileInputStream serverConfigStream;
 
