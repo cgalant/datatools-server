@@ -28,6 +28,7 @@ import com.conveyal.datatools.common.utils.SparkUtils;
 import com.conveyal.datatools.manager.DataManager;
 import com.conveyal.datatools.manager.persistence.DataStore;
 import com.conveyal.datatools.manager.persistence.FeedStore;
+import com.conveyal.datatools.manager.persistence.Persistence;
 import com.conveyal.datatools.manager.utils.HashUtils;
 import com.conveyal.gtfs.BaseGTFSCache;
 import com.conveyal.gtfs.GTFS;
@@ -38,6 +39,7 @@ import com.conveyal.r5.common.R5Version;
 import com.conveyal.r5.point_to_point.builder.TNBuilderConfig;
 import com.conveyal.r5.transit.TransportNetwork;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.eventbus.EventBus;
@@ -54,8 +56,10 @@ import com.fasterxml.jackson.annotation.JsonView;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import static com.conveyal.datatools.manager.models.Deployment.getOsmExtract;
+import static com.conveyal.datatools.manager.models.Deployment.downloadOsmExtract;
 import static com.conveyal.datatools.manager.utils.StringUtils.getCleanName;
+import static com.mongodb.client.model.Filters.eq;
+import static com.mongodb.client.model.Updates.pull;
 import static spark.Spark.halt;
 
 /**
@@ -84,18 +88,19 @@ public class FeedVersion extends Model implements Serializable {
     public FeedVersion(FeedSource source) {
         this.updated = new Date();
         this.feedSourceId = source.id;
+        this.name = formattedTimestamp() + " Version";
 
        this.id = generateFeedVersionId(source);
 
         // infer the version
-//        FeedVersion prev = source.getLatest();
+//        FeedVersion prev = source.retrieveLatest();
 //        if (prev != null) {
 //            this.version = prev.version + 1;
 //        }
 //        else {
 //            this.version = 1;
 //        }
-        int count = source.getFeedVersionCount();
+        int count = source.feedVersionCount();
         this.version = count + 1;
     }
 
@@ -125,29 +130,32 @@ public class FeedVersion extends Model implements Serializable {
     public transient TransportNetwork transportNetwork;
 
     @JsonView(JsonViews.UserInterface.class)
-    public FeedSource getFeedSource() {
-        return FeedSource.get(feedSourceId);
+    @JsonProperty("feedSource")
+    public FeedSource parentFeedSource() {
+        return Persistence.feedSources.getById(feedSourceId);
     }
 
     @JsonIgnore
-    public FeedVersion getPreviousVersion() {
+    public FeedVersion previousVersion() {
         return versionStore.find("version", new Tuple2(this.feedSourceId, this.version - 1));
     }
 
     @JsonView(JsonViews.UserInterface.class)
-    public String getPreviousVersionId() {
-        FeedVersion p = getPreviousVersion();
+    @JsonProperty("previousVersionId")
+    public String previousVersionId() {
+        FeedVersion p = previousVersion();
         return p != null ? p.id : null;
     }
 
     @JsonIgnore
-    public FeedVersion getNextVersion() {
+    public FeedVersion nextVersion() {
         return versionStore.find("version", new Tuple2(this.feedSourceId, this.version + 1));
     }
 
     @JsonView(JsonViews.UserInterface.class)
-    public String getNextVersionId() {
-        FeedVersion p = getNextVersion();
+    @JsonProperty("nextVersionId")
+    public String nextVersionId() {
+        FeedVersion p = nextVersion();
         return p != null ? p.id : null;
     }
 
@@ -158,12 +166,12 @@ public class FeedVersion extends Model implements Serializable {
     public String hash;
 
     @JsonIgnore
-    public File getGtfsFile() {
+    public File retrieveGtfsFile() {
         return feedStore.getFeed(id);
     }
 
     public File newGtfsFile(InputStream inputStream) {
-        File file = feedStore.newFeed(id, inputStream, getFeedSource());
+        File file = feedStore.newFeed(id, inputStream, parentFeedSource());
         this.fileSize = file.length();
         this.save();
         LOG.info("New GTFS file saved: {}", id);
@@ -183,7 +191,7 @@ public class FeedVersion extends Model implements Serializable {
     }
     // FIXME return sql-loader Feed object.
     @JsonIgnore
-    public Feed getFeed() {
+    public Feed retrieveFeed() {
         return new Feed(DataManager.GTFS_DATA_SOURCE, namespace);
     }
 
@@ -192,7 +200,8 @@ public class FeedVersion extends Model implements Serializable {
     public FeedValidationResult validationResult;
 
     @JsonView(JsonViews.UserInterface.class)
-    public FeedValidationResultSummary getValidationSummary() {
+    @JsonProperty("validationSummary")
+    public FeedValidationResultSummary validationSummary() {
         return new FeedValidationResultSummary(validationResult);
     }
 
@@ -214,20 +223,24 @@ public class FeedVersion extends Model implements Serializable {
     public String namespace;
 
     public String getName() {
-        return name != null ? name : (getFormattedTimestamp() + " Version");
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
     }
 
     @JsonIgnore
-    public String getFormattedTimestamp() {
+    public String formattedTimestamp() {
         SimpleDateFormat format = new SimpleDateFormat("MM/dd/yyyy H:mm");
         return format.format(this.updated);
     }
 
-    public static FeedVersion get(String id) {
+    public static FeedVersion retrieve(String id) {
         return versionStore.getById(id);
     }
 
-    public static Collection<FeedVersion> getAll() {
+    public static Collection<FeedVersion> retrieveAll() {
         return versionStore.getAll();
     }
 
@@ -253,7 +266,7 @@ public class FeedVersion extends Model implements Serializable {
 
             // Get SQL schema namespace for the feed version. This is needed for reconnecting with feeds
             // in the database.
-            namespace = GTFS.load(getGtfsFile().getPath(), DataManager.GTFS_DATA_SOURCE);
+            namespace = GTFS.load(retrieveGtfsFile().getPath(), DataManager.GTFS_DATA_SOURCE);
             LOG.info("Loaded GTFS into SQL {}", namespace);
         } catch (Exception e) {
             String errorString = String.format("Error loading GTFS feed for version: %s", this.id);
@@ -282,7 +295,7 @@ public class FeedVersion extends Model implements Serializable {
         // STEP 3. VALIDATE GTFS feed
         try {
             // make feed public... this shouldn't take very long
-            FeedSource fs = getFeedSource();
+            FeedSource fs = parentFeedSource();
             if (fs.isPublic) {
                 fs.makePublic();
             }
@@ -338,10 +351,10 @@ public class FeedVersion extends Model implements Serializable {
             Map<String, Object> validation = new HashMap<>();
             // FIXME: ensure errors loaded from sql the correct way
             validation.put("errors", 0);
-            // FIXME: get tripsPerDate from sql
+            // FIXME: retrieveById tripsPerDate from sql
 //            validation.put("tripsPerDate", tripsPerDate);
             GeometryJSON g = new GeometryJSON();
-            // FIXME: get merged buffers from sql
+            // FIXME: retrieveById merged buffers from sql
             Geometry buffers = null; // gtfsFeed.getMergedBuffers();
             validation.put("mergedBuffers", buffers != null ? g.toString(buffers) : null);
             mapper.writeValue(tempFile, validation);
@@ -352,8 +365,7 @@ public class FeedVersion extends Model implements Serializable {
         saveValidationResult(tempFile);
     }
 
-    @JsonIgnore
-    public JsonNode getValidationResult(boolean revalidate) {
+    public JsonNode retrieveValidationResult(boolean revalidate) {
         if (revalidate) {
             LOG.warn("Revalidation requested.  Validating feed.");
             this.validate();
@@ -459,12 +471,13 @@ public class FeedVersion extends Model implements Serializable {
     }
 
     public void hash () {
-        this.hash = HashUtils.hashFile(getGtfsFile());
+        this.hash = HashUtils.hashFile(retrieveGtfsFile());
     }
 
     public static void commit() {
         versionStore.commit();
     }
+
     public TransportNetwork buildTransportNetwork(EventBus eventBus) {
         // return null if validation result is null (probably means something went wrong with validation, plus we won't have feed bounds).
         if (this.validationResult == null || validationResult.loadStatus == LoadStatus.OTHER_FAILURE) {
@@ -494,9 +507,9 @@ public class FeedVersion extends Model implements Serializable {
             return null;
         }
 
-        File osmExtract = getOSMFile(bounds);
+        File osmExtract = downloadOSMFile(bounds);
         if (!osmExtract.exists()) {
-            InputStream is = getOsmExtract(this.validationResult.bounds);
+            InputStream is = downloadOsmExtract(this.validationResult.bounds);
             OutputStream out;
             try {
                 out = new FileOutputStream(osmExtract);
@@ -515,7 +528,7 @@ public class FeedVersion extends Model implements Serializable {
 
         List<GTFSFeed> feedList = new ArrayList<>();
         // FIXME: fix sql-loader integration to work with r5 TransportNetwork
-//        feedList.add(getFeed());
+//        feedList.add(retrieveFeed());
         TransportNetwork tn;
         try {
             tn = TransportNetwork.fromFeeds(osmExtract.getAbsolutePath(), feedList, TNBuilderConfig.defaultConfig());
@@ -530,7 +543,7 @@ public class FeedVersion extends Model implements Serializable {
             return null;
         }
         tn.transitLayer.buildDistanceTables(null);
-        File tnFile = getTransportNetworkPath();
+        File tnFile = transportNetworkPath();
         try {
             tn.write(tnFile);
             return transportNetwork;
@@ -541,7 +554,7 @@ public class FeedVersion extends Model implements Serializable {
     }
 
     @JsonIgnore
-    private static File getOSMFile(Rectangle2D bounds) {
+    private static File downloadOSMFile(Rectangle2D bounds) {
         if (bounds != null) {
             String baseDir = FeedStore.basePath.getAbsolutePath() + File.separator + "osm";
             File osmPath = new File(String.format("%s/%.6f_%.6f_%.6f_%.6f", baseDir, bounds.getMaxX(), bounds.getMaxY(), bounds.getMinX(), bounds.getMinY()));
@@ -584,13 +597,15 @@ public class FeedVersion extends Model implements Serializable {
     }
 
     @JsonView(JsonViews.UserInterface.class)
-    public int getNoteCount() {
+    @JsonProperty("noteCount")
+    public int noteCount() {
         return this.noteIds != null ? this.noteIds.size() : 0;
     }
 
     @JsonInclude(Include.NON_NULL)
     @JsonView(JsonViews.UserInterface.class)
-    public Long getFileTimestamp() {
+    @JsonProperty("fileTimestamp")
+    public Long fileTimestamp() {
         if (fileTimestamp != null) {
             return fileTimestamp;
         }
@@ -603,7 +618,8 @@ public class FeedVersion extends Model implements Serializable {
 
     @JsonInclude(Include.NON_NULL)
     @JsonView(JsonViews.UserInterface.class)
-    public Long getFileSize() {
+    @JsonProperty("fileSize")
+    public Long fileSize() {
         if (fileSize != null) {
             return fileSize;
         }
@@ -615,36 +631,43 @@ public class FeedVersion extends Model implements Serializable {
     }
 
     /**
-     * Delete this feed version.
+     * Delete this feed version and clean up, removing references to it and derived objects and state.
+     * Steps:
+     * If we are deleting the latest version, change the memoized "last fetched" value in the FeedSource.
+     * Delete the GTFS Zip file locally or on S3
+     * Remove this feed version from all Deployments [shouldn't we be updating the version rather than deleting it?]
+     * Remove the transport network file from the local disk
+     * Finally delete the version object from the database.
      */
     public void delete() {
         try {
             // reset lastModified if feed is latest version
-            System.out.println("deleting version");
+            LOG.info("Deleting feed version {}", this.id);
             String id = this.id;
-            FeedSource fs = getFeedSource();
-            FeedVersion latest = fs.getLatest();
+            FeedSource fs = parentFeedSource();
+            FeedVersion latest = fs.retrieveLatest();
             if (latest != null && latest.id.equals(this.id)) {
-                fs.lastFetched = null;
-                fs.save();
+                // Even if there are previous feed versions, we set to null to allow re-fetching the version that was just deleted
+                // TODO instead, set it to the fetch time of the previous feed version
+                Persistence.feedSources.update(fs.id, "{lastFetched:null}");
             }
             feedStore.deleteFeed(id);
-
-            for (Deployment d : Deployment.getAll()) {
-                d.feedVersionIds.remove(this.id);
-            }
-
-            getTransportNetworkPath().delete();
-
-
-            versionStore.delete(this.id);
+            // Remove this FeedVersion from all Deployments associated with this FeedVersion's FeedSource's Project
+            // TODO TEST THOROUGHLY THAT THIS UPDATE EXPRESSION IS CORRECT
+            // Although outright deleting the feedVersion from deployments could be surprising and shouldn't be done anyway.
+            Persistence.deployments.getMongoCollection().updateMany(eq("projectId", this.parentFeedSource().projectId),
+                    pull("feedVersionIds", this.id));
+            transportNetworkPath().delete();
+            Persistence.feedVersions.removeById(this.id);
+            this.parentFeedSource().renumberFeedVersions();
             LOG.info("Version {} deleted", id);
         } catch (Exception e) {
             LOG.warn("Error deleting version", e);
         }
     }
+
     @JsonIgnore
-    private String getR5Path() {
+    private String r5Path() {
         // r5 networks MUST be stored in separate directories (in this case under feed source ID
         // because of shared osm.mapdb used by r5 networks placed in same dir
         File r5 = new File(String.join(File.separator, FeedStore.basePath.getAbsolutePath(), this.feedSourceId));
@@ -655,7 +678,7 @@ public class FeedVersion extends Model implements Serializable {
     }
 
     @JsonIgnore
-    public File getTransportNetworkPath () {
-        return new File(String.join(File.separator, getR5Path(), id + "_" + R5Version.describe + "_network.dat"));
+    public File transportNetworkPath() {
+        return new File(String.join(File.separator, r5Path(), id + "_" + R5Version.describe + "_network.dat"));
     }
 }

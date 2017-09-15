@@ -10,12 +10,16 @@ import com.conveyal.datatools.manager.DataManager;
 import com.conveyal.datatools.manager.jobs.NotifyUsersForSubscriptionJob;
 import com.conveyal.datatools.manager.persistence.DataStore;
 import com.conveyal.datatools.manager.persistence.FeedStore;
+import com.conveyal.datatools.manager.persistence.Persistence;
 import com.conveyal.datatools.manager.utils.HashUtils;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonView;
 import com.google.common.eventbus.EventBus;
+import com.mongodb.client.model.Sorts;
+import org.bson.Document;
 import org.mapdb.Fun;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -35,6 +39,8 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static com.conveyal.datatools.manager.utils.StringUtils.getCleanName;
+import static com.mongodb.client.model.Filters.eq;
+import static com.mongodb.client.model.Sorts.orderBy;
 import static spark.Spark.halt;
 
 /**
@@ -42,11 +48,10 @@ import static spark.Spark.halt;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class FeedSource extends Model implements Cloneable {
+
     private static final long serialVersionUID = 1L;
 
     public static final Logger LOG = LoggerFactory.getLogger(FeedSource.class);
-
-    private static DataStore<FeedSource> sourceStore = new DataStore<FeedSource>("feedsources");
 
     /**
      * The collection of which this feed is a part
@@ -54,30 +59,23 @@ public class FeedSource extends Model implements Cloneable {
     //@JsonView(JsonViews.DataDump.class)
     public String projectId;
 
-    public String[] regions = {"1"};
+//    public String[] regions = {"1"};
     /**
      * Get the Project of which this feed is a part
      */
-    @JsonIgnore
-    public Project getProject () {
-        return projectId != null ? Project.get(projectId) : null;
+    public Project retrieveProject() {
+        return projectId != null ? Project.retrieve(projectId) : null;
     }
 
-    public String getOrganizationId () {
-        Project project = getProject();
+    @JsonProperty("organizationId")
+    public String organizationId () {
+        Project project = retrieveProject();
         return project == null ? null : project.organizationId;
     }
 
-    @JsonIgnore
-    public List<Region> getRegionList () {
-        return Region.getAll().stream().filter(r -> Arrays.asList(regions).contains(r.id)).collect(Collectors.toList());
-    }
-
-    public void setProject(Project proj) {
-        this.projectId = proj.id;
-        this.save();
-        proj.save();
-    }
+//    public List<Region> retrieveRegionList () {
+//        return Region.retrieveAll().stream().filter(r -> Arrays.asList(regions).contains(r.id)).collect(Collectors.toList());
+//    }
 
     /** The name of this feed source, e.g. MTA New York City Subway */
     public String name;
@@ -151,7 +149,7 @@ public class FeedSource extends Model implements Cloneable {
         statusMap.put("error", false);
         eventBus.post(statusMap);
 
-        FeedVersion latest = getLatest();
+        FeedVersion latest = retrieveLatest();
 
         // We create a new FeedVersion now, so that the fetched date is (milliseconds) before
         // fetch occurs. That way, in the highly unlikely event that a feed is updated while we're
@@ -284,7 +282,7 @@ public class FeedSource extends Model implements Cloneable {
             statusMap.put("percentComplete", 100.0);
             statusMap.put("error", false);
             eventBus.post(statusMap);
-            version.setUserById(fetchUser);
+            version.storeUser(fetchUser);
             version.fileTimestamp = conn.getLastModified();
             return version;
         }
@@ -301,15 +299,12 @@ public class FeedSource extends Model implements Cloneable {
     public void save () {
         save(true);
     }
-    public void setName(String name){
-        this.name = name;
-        this.save();
-    }
+
     public void save (boolean commit) {
-        if (commit)
-            sourceStore.save(this.id, this);
-        else
-            sourceStore.saveWithoutCommit(this.id, this);
+//        if (commit)
+//            sourceStore.save(this.id, this);
+//        else
+//            sourceStore.saveWithoutCommit(this.id, this);
     }
 
     /**
@@ -317,20 +312,21 @@ public class FeedSource extends Model implements Cloneable {
      * @return the latest version of this feed
      */
     @JsonIgnore
-    public FeedVersion getLatest () {
-        FeedVersion v = FeedVersion.versionStore.findFloor("version", new Fun.Tuple2(this.id, Fun.HI));
-
-        // the ID doesn't necessarily match, because it will fall back to the previous source in the store if there are no versions for this source
-        if (v == null || !v.feedSourceId.equals(this.id))
+    public FeedVersion retrieveLatest() {
+        FeedVersion newestVersion = Persistence.feedVersions
+                .getOneFiltered(eq("feedSourceId", this.id), Sorts.descending("version"));
+        if (newestVersion == null) {
+            // Is this what happens if there are none?
             return null;
-
-        return v;
+        }
+        return newestVersion;
     }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonView(JsonViews.UserInterface.class)
-    public String getLatestVersionId () {
-        FeedVersion latest = getLatest();
+    @JsonProperty("latestVersionId")
+    public String latestVersionId() {
+        FeedVersion latest = retrieveLatest();
         return latest != null ? latest.id : null;
     }
 
@@ -342,44 +338,48 @@ public class FeedSource extends Model implements Cloneable {
     // TODO: use summarized feed source here. requires serious refactoring on client side.
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonView(JsonViews.UserInterface.class)
-    public Date getLastUpdated() {
-        FeedVersion latest = getLatest();
+    @JsonProperty("lastUpdated")
+    public Date lastUpdated() {
+        FeedVersion latest = retrieveLatest();
         return latest != null ? latest.updated : null;
     }
 
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonView(JsonViews.UserInterface.class)
-    public FeedValidationResultSummary getLatestValidation () {
-        FeedVersion latest = getLatest();
+    @JsonProperty("latestValidation")
+    public FeedValidationResultSummary latestValidation() {
+        FeedVersion latest = retrieveLatest();
         FeedValidationResult result = latest != null ? latest.validationResult : null;
         return result != null ?new FeedValidationResultSummary(result) : null;
     }
 
-    @JsonInclude(JsonInclude.Include.NON_NULL)
-    @JsonView(JsonViews.UserInterface.class)
-    public boolean getEditedSinceSnapshot() {
-//        FeedTx tx;
-//        try {
-//            tx = VersionedDataStore.getFeedTx(id);
-//        } catch (Exception e) {
-//
-//        }
-//        return tx.editedSinceSnapshot.get();
-        return false;
-    }
+    // TODO: figure out some way to indicate whether feed has been edited since last snapshot (i.e, there exist changes)
+//    @JsonInclude(JsonInclude.Include.NON_NULL)
+//    @JsonView(JsonViews.UserInterface.class)
+//    public boolean getEditedSinceSnapshot() {
+////        FeedTx tx;
+////        try {
+////            tx = VersionedDataStore.getFeedTx(id);
+////        } catch (Exception e) {
+////
+////        }
+////        return tx.editedSinceSnapshot.retrieveById();
+//        return false;
+//    }
 
     @JsonInclude(JsonInclude.Include.NON_NULL)
     @JsonView(JsonViews.UserInterface.class)
-    public Map<String, Map<String, String>> getExternalProperties() {
+    @JsonProperty("externalProperties")
+    public Map<String, Map<String, String>> externalProperties() {
 
         Map<String, Map<String, String>> resourceTable = new HashMap<>();
 
         for(String resourceType : DataManager.feedResources.keySet()) {
             Map<String, String> propTable = new HashMap<>();
 
-            ExternalFeedSourceProperty.getAll().stream()
-                    .filter(prop -> prop.getFeedSourceId().equals(this.id))
+            ExternalFeedSourceProperty.retrieveAll().stream()
+                    .filter(prop -> prop.feedSourceId.equals(this.id))
                     .forEach(prop -> propTable.put(prop.name, prop.value));
 
             resourceTable.put(resourceType, propTable);
@@ -387,12 +387,14 @@ public class FeedSource extends Model implements Cloneable {
         return resourceTable;
     }
 
-    public static FeedSource get(String id) {
-        return sourceStore.getById(id);
+    public static FeedSource retrieve(String id) {
+//        return sourceStore.getById(id);
+        return null;
     }
 
-    public static Collection<FeedSource> getAll() {
-        return sourceStore.getAll();
+    public static Collection<FeedSource> retrieveAll() {
+//        return sourceStore.getAll();
+        return null;
     }
 
     /**
@@ -400,31 +402,30 @@ public class FeedSource extends Model implements Cloneable {
      * @return collection of feed versions
      */
     @JsonIgnore
-    public Collection<FeedVersion> getFeedVersions() {
-        // TODO Indices
-        return FeedVersion.getAll().stream()
-                .filter(v -> this.id.equals(v.feedSourceId))
-                .collect(Collectors.toCollection(ArrayList::new));
+    public Collection<FeedVersion> retrieveFeedVersions() {
+        return Persistence.feedVersions.getFiltered(eq("feedSourceId", this.id));
     }
 
     @JsonView(JsonViews.UserInterface.class)
-    public int getFeedVersionCount() {
-        return getFeedVersions().size();
+    @JsonProperty("feedVersionCount")
+    public int feedVersionCount() {
+        return retrieveFeedVersions().size();
     }
 
     @JsonView(JsonViews.UserInterface.class)
-    public int getNoteCount() {
+    @JsonProperty("noteCount")
+    public int noteCount() {
         return this.noteIds != null ? this.noteIds.size() : 0;
     }
 
-    public String getPublicKey () {
+    public String toPublicKey() {
         return "public/" + getCleanName(this.name) + ".zip";
     }
 
     public void makePublic() {
         String sourceKey = FeedStore.s3Prefix + this.id + ".zip";
-        String publicKey = getPublicKey();
-        String versionId = this.getLatestVersionId();
+        String publicKey = toPublicKey();
+        String versionId = this.latestVersionId();
         String latestVersionKey = FeedStore.s3Prefix + versionId;
 
         // only deploy to public if storing feeds on s3 (no mechanism for downloading/publishing
@@ -463,11 +464,22 @@ public class FeedSource extends Model implements Cloneable {
 
     public void makePrivate() {
         String sourceKey = FeedStore.s3Prefix + this.id + ".zip";
-        String publicKey = getPublicKey();
+        String publicKey = toPublicKey();
         if (FeedStore.s3Client.doesObjectExist(DataManager.feedBucket, sourceKey)) {
             LOG.info("removing feed {} from s3 public folder", this);
             FeedStore.s3Client.setObjectAcl(DataManager.feedBucket, sourceKey, CannedAccessControlList.AuthenticatedRead);
             FeedStore.s3Client.deleteObject(DataManager.feedBucket, publicKey);
+        }
+    }
+
+    // TODO don't number the versions just timestamp them
+    // FIXME for a brief moment feed version numbers are incoherent. Do this in a single operation or eliminate feed version numbers.
+    public void renumberFeedVersions() {
+        int i = 1;
+        for (FeedVersion feedVersion : Persistence.feedVersions.getMongoCollection().find(eq("feedSourceId", this.id)).sort(Sorts.ascending("updated"))) {
+            // Yes it's ugly to pass in a string, but we need to change the parameter type of update to take a Document.
+            Persistence.feedVersions.update(feedVersion.id, String.format("{version:%d}", i));
+            i += 1;
         }
     }
 
@@ -481,14 +493,14 @@ public class FeedSource extends Model implements Cloneable {
     }
 
     public static void commit() {
-        sourceStore.commit();
+//        sourceStore.commit();
     }
 
     /**
      * Delete this feed source and everything that it contains.
      */
     public void delete() {
-        getFeedVersions().forEach(FeedVersion::delete);
+        retrieveFeedVersions().forEach(FeedVersion::delete);
 
         // delete latest copy of feed source
         if (DataManager.useS3) {
@@ -508,13 +520,13 @@ public class FeedSource extends Model implements Cloneable {
             gtx.commit();
         }
 
-        ExternalFeedSourceProperty.getAll().stream()
-                .filter(prop -> prop.getFeedSourceId().equals(this.id))
+        ExternalFeedSourceProperty.retrieveAll().stream()
+                .filter(prop -> prop.feedSourceId.equals(this.id))
                 .forEach(ExternalFeedSourceProperty::delete);
 
         // TODO: add delete for osm extract and r5 network (maybe that goes with version)
 
-        sourceStore.delete(this.id);
+//        sourceStore.delete(this.id);
     }
 
     public FeedSource clone () throws CloneNotSupportedException {

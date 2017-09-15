@@ -13,8 +13,11 @@ import com.conveyal.datatools.manager.extensions.transitfeeds.TransitFeedsFeedRe
 import com.conveyal.datatools.manager.extensions.transitland.TransitLandFeedResource;
 
 import com.conveyal.datatools.common.status.MonitorableJob;
+import com.conveyal.datatools.manager.models.FeedSource;
 import com.conveyal.datatools.manager.models.Project;
 import com.conveyal.datatools.manager.persistence.FeedStore;
+import com.conveyal.datatools.manager.persistence.Persistence;
+import com.conveyal.datatools.manager.persistence.TestThing;
 import com.conveyal.datatools.manager.utils.CorsFilter;
 import com.conveyal.gtfs.GTFS;
 import com.conveyal.gtfs.api.GraphQLMain;
@@ -22,6 +25,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.io.Resources;
+import com.mongodb.client.result.DeleteResult;
 import org.apache.commons.io.Charsets;
 import org.eclipse.jetty.util.ConcurrentHashSet;
 import org.slf4j.Logger;
@@ -42,6 +46,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 
+import static com.mongodb.client.model.Filters.eq;
 import static spark.Spark.*;
 
 public class DataManager {
@@ -84,6 +89,7 @@ public class DataManager {
     public static final String DEFAULT_SERVER_CONFIG = "configurations/default/server.yml";
 
     public static DataSource GTFS_DATA_SOURCE;
+//    public static Persistence persistence;
 
     public static void main(String[] args) throws IOException {
 
@@ -103,23 +109,24 @@ public class DataManager {
                 getConfigPropertyAsText("GTFS_DATABASE_PASSWORD")
         );
 
-        // initialize map of auto fetched projects
-        for (Project p : Project.getAll()) {
-            if (p.autoFetchFeeds != null && autoFetchMap.get(p.id) == null){
-                if (p.autoFetchFeeds) {
-                    ScheduledFuture scheduledFuture = ProjectController.scheduleAutoFeedFetch(p.id, p.autoFetchHour, p.autoFetchMinute, 1, p.defaultTimeZone);
-                    autoFetchMap.put(p.id, scheduledFuture);
-                }
-            }
-        }
-
         feedBucket = getConfigPropertyAsText("application.data.gtfs_s3_bucket");
         awsRole = getConfigPropertyAsText("application.data.aws_role");
         bucketFolder = FeedStore.s3Prefix;
 
         // Register the GET and POST endpoints for the GraphQL GTFS API with Spark
         GraphQLMain.initialize(GTFS_DATA_SOURCE, API_PREFIX);
-        // Register the remaining API endpoints with Spark
+        LOG.info("Initialized gtfs-api at localhost:port{}", API_PREFIX);
+
+        Persistence.initialize();
+
+        // initialize map of auto fetched projects
+        for (Project project : Persistence.projects.getAll()) {
+            if (project.autoFetchFeeds) {
+                ScheduledFuture scheduledFuture = ProjectController.scheduleAutoFeedFetch(project, 1);
+                autoFetchMap.put(project.id, scheduledFuture);
+            }
+        }
+
         registerRoutes();
         registerExternalResources();
     }

@@ -2,6 +2,7 @@ node_modules/
 datatools-server.iml
 .DS_Store
 dist
+*.iml
 *.log
 coverage
 .idea
