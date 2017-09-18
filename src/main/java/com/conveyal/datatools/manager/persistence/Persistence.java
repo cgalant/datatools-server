@@ -3,9 +3,11 @@ package com.conveyal.datatools.manager.persistence;
 import com.conveyal.datatools.manager.DataManager;
 import com.conveyal.datatools.manager.codec.LocalDateCodec;
 import com.conveyal.datatools.manager.codec.Rectangle2DCodec;
+import com.conveyal.datatools.manager.codec.Rectangle2DDoubleCodec;
 import com.conveyal.datatools.manager.codec.URLCodec;
 import com.conveyal.datatools.manager.models.Deployment;
 import com.conveyal.datatools.manager.models.ExternalFeedSourceProperty;
+import com.conveyal.datatools.manager.models.FeedDownloadToken;
 import com.conveyal.datatools.manager.models.FeedSource;
 import com.conveyal.datatools.manager.models.FeedVersion;
 import com.conveyal.datatools.manager.models.Note;
@@ -38,6 +40,8 @@ import static org.bson.codecs.configuration.CodecRegistries.fromRegistries;
 public class Persistence {
 
     private static final Logger LOG = LoggerFactory.getLogger(Persistence.class);
+    private static final String MONGO_URI = "MONGO_URI";
+    private static final String MONGO_DB_NAME = "MONGO_DB_NAME";
 
     private static MongoClient mongo;
     private static MongoDatabase mongoDatabase;
@@ -51,6 +55,7 @@ public class Persistence {
     public static TypedPersistence<Note> notes;
     public static TypedPersistence<Organization> organizations;
     public static TypedPersistence<ExternalFeedSourceProperty> externalFeedSourceProperties;
+    public static TypedPersistence<FeedDownloadToken> tokens;
 
     public static void initialize () {
 
@@ -63,6 +68,7 @@ public class Persistence {
         CodecRegistry customRegistry = CodecRegistries.fromCodecs(
                 new URLCodec(),
                 new Rectangle2DCodec(),
+                new Rectangle2DDoubleCodec(),
                 new LocalDateCodec());
 
         pojoCodecRegistry = fromRegistries(MongoClient.getDefaultCodecRegistry(),
@@ -73,15 +79,15 @@ public class Persistence {
 //                .sslEnabled(true)
                 .codecRegistry(pojoCodecRegistry);
 
-        if (DataManager.hasConfigProperty("mongo_uri")) {
-            mongo = new MongoClient(new MongoClientURI(DataManager.getConfigPropertyAsText("MONGO_URI"), builder));
+        if (DataManager.hasConfigProperty(MONGO_URI)) {
+            mongo = new MongoClient(new MongoClientURI(DataManager.getConfigPropertyAsText(MONGO_URI), builder));
             LOG.info("Connecting to remote MongoDB instance");
         } else {
             LOG.info("Connecting to local MongoDB instance");
             mongo = new MongoClient("localhost", builder.build());
         }
 
-        mongoDatabase = mongo.getDatabase(DataManager.getConfigPropertyAsText("MONGO_DB_NAME"));
+        mongoDatabase = mongo.getDatabase(DataManager.getConfigPropertyAsText(MONGO_DB_NAME));
 
         // TODO: Set up indexes on feed versions by feedSourceId, version #?
 
@@ -92,6 +98,7 @@ public class Persistence {
         notes = new TypedPersistence(mongoDatabase, Note.class);
         organizations = new TypedPersistence(mongoDatabase, Organization.class);
         externalFeedSourceProperties = new TypedPersistence(mongoDatabase, ExternalFeedSourceProperty.class);
+        tokens = new TypedPersistence(mongoDatabase, FeedDownloadToken.class);
     }
     
 }

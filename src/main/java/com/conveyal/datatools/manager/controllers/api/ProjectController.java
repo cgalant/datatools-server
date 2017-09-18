@@ -182,7 +182,7 @@ public class ProjectController {
      * FIXME: eliminate all stringly typed variables (action)
      * @param req spark Request object from API request
      * @param action action type (either "view" or "manage")
-     * @return requested retrieveProject
+     * @return requested project
      */
     private static Project requestProjectById (Request req, String action) {
         String id = req.params("id");
@@ -210,7 +210,7 @@ public class ProjectController {
         // Check if request was made by a user that is not logged in
         boolean publicFilter = req.pathInfo().matches(publicPath);
 
-        // check for null retrieveProject
+        // check for null project
         if (project == null) {
             halt(400, SparkUtils.formatJSON("Project ID does not exist", 400));
             return null;
@@ -258,7 +258,7 @@ public class ProjectController {
     private static HttpServletResponse downloadMergedFeed(Request req, Response res) throws IOException {
         Project p = requestProjectById(req, "view");
 
-        // retrieveById feed sources in retrieveProject
+        // retrieveById feed sources in project
         Collection<FeedSource> feeds = p.retrieveProjectFeedSources();
 
         // create temp merged zip file to add feed content to
@@ -282,7 +282,7 @@ public class ProjectController {
             throw new RuntimeException(e);
         }
 
-        LOG.info("Created retrieveProject merge file: " + mergedFile.getAbsolutePath());
+        LOG.info("Created project merge file: " + mergedFile.getAbsolutePath());
 
         // Map of feed versions to zip files containing those feeds
         Map<FeedSource, ZipFile> feedSourceMap = new HashMap<>();
@@ -459,11 +459,11 @@ public class ProjectController {
         Auth0UserProfile userProfile = req.attribute("user");
         String id = req.params("id");
         if (id == null) {
-            halt(400, "must provide retrieveProject id!");
+            halt(400, "must provide project id!");
         }
-        Project p = Project.retrieve(id);
+        Project p = Persistence.projects.getById(id);
         if (p == null) {
-            halt(400, "no such retrieveProject!");
+            halt(400, "no such project!");
         }
         // Run this as a synchronous job; if it proves to be too slow we will change to asynchronous.
         new MakePublicJob(p, userProfile.getUser_id()).run();
@@ -478,7 +478,7 @@ public class ProjectController {
     private static Project thirdPartySync(Request req, Response res) throws Exception {
         Auth0UserProfile userProfile = req.attribute("user");
         String id = req.params("id");
-        Project proj = Project.retrieve(id);
+        Project proj = Persistence.projects.getById(id);
 
         String syncType = req.params("type");
 
@@ -552,7 +552,7 @@ public class ProjectController {
      * There is only one auto-fetch job per project, not one for each feedSource within the project.
      */
     private static void cancelAutoFetch(String projectId){
-        Project p = Project.retrieve(projectId);
+        Project p = Persistence.projects.getById(projectId);
         if ( p != null && DataManager.autoFetchMap.get(p.id) != null) {
             LOG.info("Cancelling auto-fetch for projectID: {}", p.id);
             DataManager.autoFetchMap.get(p.id).cancel(true);
