@@ -31,6 +31,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
+import java.util.Locale;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -59,7 +60,7 @@ public class Deployment extends Model implements Serializable {
     public String projectId;
 
     @JsonProperty("project")
-    public Project project() {
+    public Project parentProject() {
         return Persistence.projects.getById(projectId);
     }
 
@@ -85,6 +86,9 @@ public class Deployment extends Model implements Serializable {
 //    @JsonView(JsonViews.UserInterface.class)
     @JsonProperty("feedVersions")
     public List<SummarizedFeedVersion> retrieveFeedVersions() {
+        // return empty array if feedVersionIds is null
+        if (feedVersionIds == null) return new ArrayList<>();
+
         ArrayList<SummarizedFeedVersion> ret = new ArrayList<>(feedVersionIds.size());
 
         for (String id : feedVersionIds) {
@@ -316,7 +320,7 @@ public class Deployment extends Model implements Serializable {
 
         if (includeOtpConfig) {
             // write build-config.json and router-config.json
-            Project proj = this.project();
+            Project proj = this.parentProject();
 
             if (proj.buildConfig != null) {
                 ZipEntry buildConfigEntry = new ZipEntry("build-config.json");
@@ -356,9 +360,9 @@ public class Deployment extends Model implements Serializable {
         // call vex server
         URL vexUrl = null;
         try {
-            vexUrl = new URL(String.format("%s/?n=%.6f&e=%.6f&s=%.6f&w=%.6f",
+            vexUrl = new URL(String.format(Locale.ROOT,"%s/%.6f,%.6f,%.6f,%.6f.pbf",
                     DataManager.getConfigPropertyAsText("OSM_VEX"),
-                    bounds.getMaxY(), bounds.getMaxX(), bounds.getMinY(), bounds.getMinX()));
+                    bounds.getMinY(), bounds.getMinX(), bounds.getMaxY(), bounds.getMaxX()));
         } catch (MalformedURLException e1) {
             e1.printStackTrace();
         }
@@ -393,7 +397,7 @@ public class Deployment extends Model implements Serializable {
     @JsonProperty("projectBounds")
     public Rectangle2D retrieveProjectBounds() {
 
-        Project proj = this.project();
+        Project proj = this.parentProject();
         if(proj.useCustomOsmBounds) {
             Rectangle2D bounds = new Rectangle2D.Double(proj.osmWest, proj.osmSouth,
                     proj.osmEast - proj.osmWest, proj.osmNorth - proj.osmSouth);
@@ -473,7 +477,7 @@ public class Deployment extends Model implements Serializable {
 
     @JsonProperty("organizationId")
     public String organizationId() {
-        Project project = project();
+        Project project = parentProject();
         return project == null ? null : project.organizationId;
     }
 
