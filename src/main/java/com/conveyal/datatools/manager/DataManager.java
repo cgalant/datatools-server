@@ -24,6 +24,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.google.common.io.Resources;
 import org.apache.commons.io.Charsets;
+import org.apache.commons.lang.StringUtils;
 import org.eclipse.jetty.util.ConcurrentHashSet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -290,12 +291,19 @@ public class DataManager {
      * Get a config property (nested fields defined by dot notation "data.use_s3_storage") as text.
      */
     public static String getConfigPropertyAsText(String name) {
-        JsonNode node = getConfigProperty(name);
-        if (node != null) {
-            return node.asText();
-        } else {
-            LOG.warn("Config property {} not found", name);
-            return null;
+
+        String value = System.getProperty(name);
+        if(StringUtils.isNotBlank(value)){
+            LOG.warn("Config property {} from env and value = {}", name, value);
+            return value;
+        }else {
+            JsonNode node = getConfigProperty(name);
+            if (node != null) {
+                return node.asText();
+            } else {
+                LOG.warn("Config property {} not found", name);
+                return null;
+            }
         }
     }
 
